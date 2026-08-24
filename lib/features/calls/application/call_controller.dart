@@ -28,48 +28,79 @@ class CallController extends ChangeNotifier {
   StreamSubscription<CallSession>? _sessionSubscription;
   StreamSubscription<RTCSessionDescription?>? _answerSubscription;
   StreamSubscription<RTCIceCandidate>? _candidateSubscription;
+
+  final List<RTCIceCandidate> _pendingCallerCandidates = [];
+
   bool _answerApplied = false;
   bool _disposed = false;
+  bool _ending = false;
 
   CallState get state => _state;
   String? get callId => _callId;
 
   Future<void> startOutgoingCall(ChatUser callee) async {
-    if (_state.status != CallStatus.idle) return;
+    if (_disposed || _state.status != CallStatus.idle) return;
 
     _setState(_state.copyWith(status: CallStatus.preparing, clearError: true));
 
     try {
       await _audioService.prepare(
         onIceCandidate: (candidate) {
-          final id = _callId;
-          if (id == null) return;
+          if (_disposed) return;
 
-          _signalingService.addCallerCandidate(
-            callId: id,
-            candidate: candidate,
+          final id = _callId;
+          if (id == null) {
+            _pendingCallerCandidates.add(candidate);
+            return;
+          }
+
+          unawaited(
+            _signalingService
+                .addCallerCandidate(callId: id, candidate: candidate)
+                .catchError((_) {}),
           );
         },
       );
 
+      if (_disposed) return;
+
       final offer = await _audioService.createOffer();
+      if (_disposed) return;
+
       final reference = await _signalingService.createOutgoingCall(
         callee: callee,
         offer: offer,
       );
 
       _callId = reference.id;
+
+      final pending = List<RTCIceCandidate>.from(_pendingCallerCandidates);
+      _pendingCallerCandidates.clear();
+
+      for (final candidate in pending) {
+        if (_disposed) return;
+        await _signalingService.addCallerCandidate(
+          callId: reference.id,
+          candidate: candidate,
+        );
+      }
+
+      if (_disposed) return;
+
+      _answerApplied = false;
       _listenForRemoteSignaling(reference.id);
       _setState(_state.copyWith(status: CallStatus.ringing));
     } catch (error) {
+      if (_disposed) return;
+
       final id = _callId;
       if (id != null) {
         try {
           await _signalingService.markFailed(id);
-        } catch (_) {
-          // Keep the original call error.
-        }
+        } catch (_) {}
       }
+
+      if (_disposed) return;
 
       _setState(
         _state.copyWith(
@@ -81,14 +112,15 @@ class CallController extends ChangeNotifier {
   }
 
   void _listenForRemoteSignaling(String callId) {
-    _sessionSubscription?.cancel();
-    _answerSubscription?.cancel();
-    _candidateSubscription?.cancel();
+    if (_disposed) return;
+
+    unawaited(_disposeSubscriptions());
 
     _sessionSubscription = _signalingService.watchSession(callId).listen((
       session,
     ) {
-      if (_disposed) return;
+      if (_disposed || session.id != _callId) return;
+
       if (session.status == CallSessionStatus.accepted) {
         if (_state.status != CallStatus.connected) {
           _setState(_state.copyWith(status: CallStatus.connecting));
@@ -98,6 +130,9 @@ class CallController extends ChangeNotifier {
 
       if (session.status == CallSessionStatus.rejected ||
           session.status == CallSessionStatus.ended) {
+        _timer?.cancel();
+        _timer = null;
+
         if (_state.status != CallStatus.ended) {
           _setState(_state.copyWith(status: CallStatus.ended));
         }
@@ -105,6 +140,8 @@ class CallController extends ChangeNotifier {
       }
 
       if (session.status == CallSessionStatus.failed) {
+        _timer?.cancel();
+        _timer = null;
         _setState(
           _state.copyWith(
             status: CallStatus.failed,
@@ -117,25 +154,56 @@ class CallController extends ChangeNotifier {
     _answerSubscription = _signalingService.watchAnswer(callId).listen((
       answer,
     ) async {
-      if (_disposed) return;
-      if (answer == null || _answerApplied) return;
+      if (_disposed || callId != _callId || answer == null || _answerApplied) {
+        return;
+      }
 
       _answerApplied = true;
-      await _audioService.applyRemoteAnswer(answer);
-      markConnected();
+
+      try {
+        await _audioService.applyRemoteAnswer(answer);
+        if (_disposed || callId != _callId) return;
+        markConnected();
+      } catch (error) {
+        if (_disposed) return;
+        _setState(
+          _state.copyWith(
+            status: CallStatus.failed,
+            errorMessage: 'Could not apply call answer: $error',
+          ),
+        );
+      }
     });
 
     _candidateSubscription = _signalingService
         .watchCalleeCandidates(callId)
-        .listen(_audioService.addRemoteCandidate);
+        .listen((candidate) {
+          if (_disposed || callId != _callId) return;
+
+          unawaited(
+            _audioService.addRemoteCandidate(candidate).catchError((_) {}),
+          );
+        });
   }
 
   void markConnected() {
-    if (_state.status == CallStatus.ended) return;
+    if (_disposed ||
+        _ending ||
+        _state.status == CallStatus.ended ||
+        _state.status == CallStatus.failed) {
+      return;
+    }
+
+    if (_state.status == CallStatus.connected && _connectedAt != null) {
+      return;
+    }
 
     _connectedAt = DateTime.now();
     _timer?.cancel();
+
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_disposed || _ending) return;
+
       final startedAt = _connectedAt;
       if (startedAt == null) return;
 
@@ -146,43 +214,63 @@ class CallController extends ChangeNotifier {
   }
 
   Future<void> toggleMute() async {
+    if (_disposed || _ending) return;
+
     final next = !_state.muted;
     await _audioService.setMuted(next);
+
+    if (_disposed || _ending) return;
     _setState(_state.copyWith(muted: next));
   }
 
   Future<void> toggleSpeaker() async {
+    if (_disposed || _ending) return;
+
     final next = !_state.speakerEnabled;
     await _audioService.setSpeakerEnabled(next);
+
+    if (_disposed || _ending) return;
     _setState(_state.copyWith(speakerEnabled: next));
   }
 
   Future<void> endCall() async {
+    if (_disposed || _ending) return;
+    _ending = true;
+
     _timer?.cancel();
     _timer = null;
 
-    final id = _callId;
-    if (id != null) {
-      try {
-        await _signalingService.endCall(id);
-      } catch (_) {
-        // Local media still closes if Firestore is unavailable.
+    try {
+      final id = _callId;
+      if (id != null) {
+        try {
+          await _signalingService.endCall(id);
+        } catch (_) {}
       }
-    }
 
-    await _disposeSubscriptions();
-    await _audioService.dispose();
-    _setState(_state.copyWith(status: CallStatus.ended));
+      await _disposeSubscriptions();
+      await _audioService.dispose();
+      _pendingCallerCandidates.clear();
+
+      if (_disposed) return;
+      _setState(_state.copyWith(status: CallStatus.ended));
+    } finally {
+      _ending = false;
+    }
   }
 
   Future<void> _disposeSubscriptions() async {
-    await _sessionSubscription?.cancel();
-    await _answerSubscription?.cancel();
-    await _candidateSubscription?.cancel();
+    final session = _sessionSubscription;
+    final answer = _answerSubscription;
+    final candidate = _candidateSubscription;
 
     _sessionSubscription = null;
     _answerSubscription = null;
     _candidateSubscription = null;
+
+    await session?.cancel();
+    await answer?.cancel();
+    await candidate?.cancel();
   }
 
   void _setState(CallState next) {
@@ -193,10 +281,18 @@ class CallController extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (_disposed) return;
+
     _disposed = true;
+    _ending = true;
+
     _timer?.cancel();
-    _disposeSubscriptions();
-    _audioService.dispose();
+    _timer = null;
+    _pendingCallerCandidates.clear();
+
+    unawaited(_disposeSubscriptions());
+    unawaited(_audioService.dispose());
+
     super.dispose();
   }
 }

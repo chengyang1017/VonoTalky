@@ -1,4 +1,5 @@
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:flutter/foundation.dart';
 
 class WebRtcAudioService {
   MediaStream? _localStream;
@@ -33,14 +34,40 @@ class WebRtcAudioService {
 
     connection.onIceCandidate = (candidate) {
       if (candidate.candidate == null) return;
+
+      debugPrint('WebRTC local ICE candidate: ${candidate.candidate}');
+
       onIceCandidate(candidate);
+    };
+
+    connection.onIceConnectionState = (state) {
+      debugPrint('WebRTC ICE state: $state');
+    };
+
+    connection.onConnectionState = (state) {
+      debugPrint('WebRTC connection state: $state');
+    };
+
+    connection.onTrack = (event) {
+      debugPrint(
+        'WebRTC remote track: '
+        'kind=${event.track.kind}, '
+        'id=${event.track.id}, '
+        'streams=${event.streams.length}',
+      );
+
+      if (event.track.kind == 'audio') {
+        event.track.enabled = true;
+      }
     };
 
     _peerConnection = connection;
 
     for (final track in _localStream!.getAudioTracks()) {
+      track.enabled = true;
       await connection.addTrack(track, _localStream!);
     }
+    await Helper.setSpeakerphoneOn(true);
   }
 
   Future<RTCSessionDescription> createOffer() async {

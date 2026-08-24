@@ -1,5 +1,22 @@
 ## [Unreleased]
 
+### Added
+
+- Rebuilt the WhatsApp-style pure voice-call lifecycle on top of the current stable call baseline.
+- Added a global incoming/ongoing call bar using the root Navigator's real `Overlay`, so it remains visible above direct chats, group chats, Contacts, Space, Profile, Settings, and other pushed routes.
+- Foreground incoming calls now expose Accept and Decline directly from the global call bar.
+- Active calls can be minimized by leaving the full call page without ending the call; tapping the ongoing call bar returns to the full call page.
+- Added a persistent `CallCoordinator` so call media/controller lifetime is no longer tied to a single route.
+
+### Fixed
+
+- Avoided the previous `MaterialApp.builder` overlay placement that caused `No Overlay widget found` / Tooltip red screens.
+- Rebound incoming Firestore call listening to Firebase Auth changes so mounting before AuthGate resolves cannot permanently subscribe to an empty UID.
+- Preserved early outgoing ICE candidates until the Firestore call ID exists instead of dropping them.
+- Hardened incoming and outgoing call controllers against asynchronous callbacks after disposal.
+- Kept Android CallKit for background/locked-device calls while using the in-app call bar when VonoTalky is foregrounded.
+
+
 ### Fixed
 
 - Fixed global incoming-call listening being initialized before Firebase Auth had restored the signed-in user.

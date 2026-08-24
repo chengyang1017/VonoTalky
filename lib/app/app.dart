@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../features/auth/data/services/auth_service.dart';
 import '../features/auth/presentation/pages/auth_gate.dart';
+import '../features/calls/presentation/widgets/incoming_call_listener.dart';
 import 'navigation/app_navigator.dart';
 import 'navigation/auth_navigation_coordinator.dart';
 import 'router/app_router.dart';
@@ -47,7 +48,7 @@ class _VonoTalkyAppState extends State<VonoTalkyApp> {
           themeMode: preferences.mode,
           theme: AppTheme.light(preferences.color),
           darkTheme: AppTheme.dark(preferences.color),
-          home: const AuthGate(),
+          home: const IncomingCallListener(child: AuthGate()),
           onGenerateRoute: AppRouter.onGenerateRoute,
         ),
       );
