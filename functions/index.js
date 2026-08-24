@@ -147,6 +147,62 @@ async function sendToUser({
   };
 }
 
+
+async function sendDataOnlyToUser({
+  userId,
+  data,
+}) {
+  const tokens = await getEnabledDeviceTokens(userId);
+
+  if (tokens.length === 0) {
+    logger.info("No enabled FCM devices for data-only message.", {
+      userId,
+      type: data.type,
+    });
+    return {
+      successCount: 0,
+      failureCount: 0,
+    };
+  }
+
+  const response = await messaging.sendEachForMulticast({
+    tokens,
+    data: Object.fromEntries(
+      Object.entries(data).map(([key, value]) => [
+        key,
+        value == null ? "" : String(value),
+      ]),
+    ),
+    android: {
+      priority: "high",
+    },
+    apns: {
+      headers: {
+        "apns-priority": "10",
+      },
+      payload: {
+        aps: {
+          "content-available": 1,
+        },
+      },
+    },
+  });
+
+  await removeInvalidTokens(userId, tokens, response);
+
+  logger.info("Data-only FCM multicast completed.", {
+    userId,
+    successCount: response.successCount,
+    failureCount: response.failureCount,
+    type: data.type,
+  });
+
+  return {
+    successCount: response.successCount,
+    failureCount: response.failureCount,
+  };
+}
+
 exports.onPetInviteCreated = onDocumentCreated(
   "petInvites/{inviteId}",
   async (event) => {
@@ -539,4 +595,70 @@ exports.onGroupMessageCreated = onDocumentCreated(
     }
   },
 );
-exports.onCallCreated = require("./call_notifications").onCallCreated;
+
+exports.onCallCreated = onDocumentCreated(
+  "calls/{callId}",
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
+
+    const call = snapshot.data();
+
+    // Do not require a specific call.type value here. Existing clients may
+    // omit it or use a legacy value. The signaling status + participants are
+    // the reliable compatibility contract.
+    if (call.status !== "ringing") return;
+
+    const callerId = call.callerId;
+    const calleeId = call.calleeId;
+
+    if (
+      typeof callerId !== "string" ||
+      callerId.length === 0 ||
+      typeof calleeId !== "string" ||
+      calleeId.length === 0 ||
+      callerId === calleeId
+    ) {
+      logger.warn("Invalid incoming call payload.", {
+        callId: event.params.callId,
+        callerId,
+        calleeId,
+        status: call.status,
+      });
+      return;
+    }
+
+    const callerName =
+      typeof call.callerName === "string" &&
+      call.callerName.trim().length > 0
+        ? call.callerName.trim()
+        : "VonoTalky user";
+
+    const callerPhotoUrl =
+      typeof call.callerPhotoUrl === "string"
+        ? call.callerPhotoUrl
+        : "";
+
+    // Reliability-first delivery:
+    // - foreground: FirebaseMessaging.onMessage + Firestore signaling
+    // - background/killed: Android/iOS receives a normal high-priority push
+    //   which the user can tap to open the call
+    //
+    // NotificationService explicitly ignores foreground banners, so this
+    // will not recreate the intrusive in-app "Open / X" MaterialBanner.
+    await sendToUser({
+      userId: calleeId,
+      title: callerName,
+      body: "Incoming voice call",
+      data: {
+        type: "incoming_call",
+        callId: event.params.callId,
+        callerId,
+        callerName,
+        callerPhotoUrl,
+        friendId: callerId,
+      },
+    });
+  },
+);
+

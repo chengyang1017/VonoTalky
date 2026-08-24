@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../calls/presentation/widgets/incoming_call_listener.dart';
+
 import '../../../chat/data/models/chat_user.dart';
 import '../../../chat/data/services/chat_service.dart';
 import '../../../chat/presentation/pages/new_chat_page.dart';
@@ -172,12 +173,8 @@ class _ChatHomePageState extends State<ChatHomePage> {
                                       query.isEmpty
                                           ? 'No contacts yet'
                                           : 'No contacts match "$query"',
-                                      style: TextStyle(
-                                        color:
-                                            Theme.of(context).brightness ==
-                                                Brightness.dark
-                                            ? Colors.white70
-                                            : Colors.black54,
+                                      style: const TextStyle(
+                                        color: Color(0xFF756E7C),
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -332,12 +329,10 @@ class _SectionTitle extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(18, 4, 18, 6),
       child: Text(
         text,
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 15,
           fontWeight: FontWeight.w700,
-          color: Theme.of(context).brightness == Brightness.dark
-              ? Colors.white
-              : Colors.black,
+          color: Color(0xFF211B27),
         ),
       ),
     ),
@@ -412,13 +407,7 @@ class _TopContact extends StatelessWidget {
             user.name.split(' ').first,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white
-                  : Colors.black,
-            ),
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
           ),
           Text(
             user.isOnline ? 'online' : 'offline',
@@ -426,9 +415,7 @@ class _TopContact extends StatelessWidget {
               fontSize: 9,
               color: user.isOnline
                   ? const Color(0xFF1EAD6A)
-                  : Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white70
-                  : Colors.black54,
+                  : const Color(0xFF8B8490),
             ),
           ),
         ],
@@ -466,7 +453,7 @@ class _ContactAvatar extends StatelessWidget {
           radius: radius,
           backgroundColor: Theme.of(
             context,
-          ).colorScheme.surfaceContainerHighest,
+          ).colorScheme.primary.withValues(alpha: .12),
           backgroundImage: user.photoUrl == null
               ? null
               : NetworkImage(user.photoUrl!),
@@ -474,7 +461,7 @@ class _ContactAvatar extends StatelessWidget {
               ? Text(
                   user.name[0].toUpperCase(),
                   style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
+                    color: Theme.of(context).colorScheme.primary,
                     fontWeight: FontWeight.w700,
                   ),
                 )
@@ -491,10 +478,7 @@ class _ContactAvatar extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFF24C77A),
               shape: BoxShape.circle,
-              border: Border.all(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                width: 2,
-              ),
+              border: Border.all(color: Colors.white, width: 2),
             ),
           ),
         ),

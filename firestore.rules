@@ -274,8 +274,13 @@ service cloud.firestore {
                );
       }
 
-      allow read: if request.auth != null
+      allow get: if request.auth != null
                   && request.auth.uid in resource.data.memberIds;
+
+          // IncomingCallListener:
+      // where('calleeId', isEqualTo: currentUser.uid)
+      allow list: if request.auth != null
+                  && resource.data.calleeId == request.auth.uid;
 
       allow create: if request.auth != null
                     && request.resource.data.callerId == request.auth.uid

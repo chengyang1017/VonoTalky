@@ -347,7 +347,7 @@ class _RealChatRoomViewState extends State<_RealChatRoomView> {
       }
     });
     try {
-      await service.toggleReaction(widget.user.uid, messageId, 'Ã¢ÂÂ¤Ã¯Â¸Â');
+      await service.toggleReaction(widget.user.uid, messageId, '❤️');
     } catch (_) {
       if (mounted) _notice('Reaction could not be updated');
     }
@@ -570,7 +570,7 @@ class _RealChatRoomViewState extends State<_RealChatRoomView> {
           voiceCancelArmed
               ? 'Release to cancel'
               : recording
-              ? 'Release to send Ã‚Â· Slide up to cancel'
+              ? 'Release to send · Slide up to cancel'
               : 'Hold to talk',
           style: TextStyle(
             color: voiceCancelArmed
@@ -869,7 +869,7 @@ class _RealChatRoomViewState extends State<_RealChatRoomView> {
                             ),
                             Text(
                               context.watch<ChatPresenceCubit>().state.typing
-                                  ? 'TypingÃ¢â‚¬Â¦'
+                                  ? 'Typing...'
                                   : widget.user.isOnline
                                   ? 'Online'
                                   : _lastSeen(widget.user.lastSeen),
@@ -1429,7 +1429,7 @@ class _RealChatRoomViewState extends State<_RealChatRoomView> {
                                                                         Text(
                                                                           sentAt ==
                                                                                   null
-                                                                              ? 'SendingÃ¢â‚¬Â¦'
+                                                                              ? 'Sending...'
                                                                               : _messageTime(
                                                                                   sentAt,
                                                                                 ),
@@ -1598,7 +1598,7 @@ class _RealChatRoomViewState extends State<_RealChatRoomView> {
                                                                           child,
                                                                     ),
                                                                 child: const Text(
-                                                                  'Ã¢ÂÂ¤Ã¯Â¸Â',
+                                                                  '❤️',
                                                                   style: TextStyle(
                                                                     fontSize:
                                                                         42,
@@ -1753,7 +1753,7 @@ class _RealChatRoomViewState extends State<_RealChatRoomView> {
                                     ),
                                     SizedBox(width: 8),
                                     Text(
-                                      'Finding original messageÃ¢â‚¬Â¦',
+                                      'Finding original message...',
                                       style: TextStyle(
                                         color: Color(0xFF6F5C81),
                                         fontSize: 11,
@@ -1784,10 +1784,10 @@ class _RealChatRoomViewState extends State<_RealChatRoomView> {
                                 vertical: 3,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: colors.surface,
                                 borderRadius: BorderRadius.circular(26),
                                 border: Border.all(
-                                  color: const Color(0xFFE1DCE8),
+                                  color: colors.outlineVariant,
                                 ),
                               ),
                               child: recording
@@ -1858,6 +1858,10 @@ class _RealChatRoomViewState extends State<_RealChatRoomView> {
                                               child: TextField(
                                                 controller: controller,
                                                 focusNode: messageFocusNode,
+                                                style: TextStyle(
+                                                  color: colors.onSurface,
+                                                ),
+                                                cursorColor: colors.primary,
                                                 textAlignVertical:
                                                     TextAlignVertical.center,
                                                 onTap: () {
@@ -1913,6 +1917,8 @@ class _RealChatRoomViewState extends State<_RealChatRoomView> {
                                                       );
                                                     },
                                                 decoration: InputDecoration(
+                                                  filled: true,
+                                                  fillColor: Colors.transparent,
                                                   hintText: 'Type a message...',
                                                   border: InputBorder.none,
                                                   isDense: true,
@@ -3069,30 +3075,19 @@ class _RealChatRoomViewState extends State<_RealChatRoomView> {
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children:
-                      const [
-                            'Ã°Å¸â€˜Â',
-                            'Ã¢ÂÂ¤Ã¯Â¸Â',
-                            'Ã°Å¸Ëœâ€š',
-                            'Ã°Å¸ËœÂ®',
-                            'Ã°Å¸ËœÂ¢',
-                            'Ã°Å¸â„¢Â',
-                          ]
-                          .map(
-                            (emoji) => InkWell(
-                              borderRadius: BorderRadius.circular(22),
-                              onTap: () =>
-                                  Navigator.pop(sheetContext, 'react:$emoji'),
-                              child: Padding(
-                                padding: EdgeInsets.all(8),
-                                child: Text(
-                                  emoji,
-                                  style: TextStyle(fontSize: 24),
-                                ),
-                              ),
-                            ),
-                          )
-                          .toList(),
+                  children: const ['👍', '❤️', '😂', '😮', '😢', '🙏']
+                      .map(
+                        (emoji) => InkWell(
+                          borderRadius: BorderRadius.circular(22),
+                          onTap: () =>
+                              Navigator.pop(sheetContext, 'react:$emoji'),
+                          child: Padding(
+                            padding: EdgeInsets.all(8),
+                            child: Text(emoji, style: TextStyle(fontSize: 24)),
+                          ),
+                        ),
+                      )
+                      .toList(),
                 ),
                 const Divider(height: 18),
                 Row(
@@ -3876,7 +3871,7 @@ class _RealChatRoomViewState extends State<_RealChatRoomView> {
   }
 
   String _dateLabel(DateTime? value) {
-    if (value == null) return 'SendingÃ¢â‚¬Â¦';
+    if (value == null) return 'Sending...';
     final date = value.toLocal();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);

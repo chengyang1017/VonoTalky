@@ -28,7 +28,12 @@ class CallSignalingService {
       throw StateError('You must be signed in to start a call.');
     }
 
+    if (callee.uid.isEmpty || callee.uid == caller.uid) {
+      throw StateError('Invalid call recipient.');
+    }
+
     final reference = _calls.doc();
+
     await reference.set({
       'type': 'audio',
       'status': 'ringing',
@@ -54,27 +59,31 @@ class CallSignalingService {
 
     return _calls.where('calleeId', isEqualTo: uid).snapshots().map((snapshot) {
       final invites = snapshot.docs
-          .where((doc) => doc.data()['status'] == 'ringing')
+          .where((document) => document.data()['status'] == 'ringing')
           .map(IncomingCallInvite.fromDoc)
-          .toList();
-      invites.sort((a, b) {
-        final aa = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bb = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return bb.compareTo(aa);
-      });
-      return invites;
+          .toList(growable: false);
+
+      final sorted = [...invites]
+        ..sort((a, b) {
+          final aa = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          final bb = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          return bb.compareTo(aa);
+        });
+
+      return sorted;
     });
   }
 
   Future<IncomingCallInvite?> readIncomingInvite(String callId) async {
-    if (callId.isEmpty) return null;
+    final uid = myId;
+    if (callId.isEmpty || uid.isEmpty) return null;
 
     final document = await _calls.doc(callId).get();
     if (!document.exists) return null;
 
     final data = document.data();
     if (data == null ||
-        data['calleeId'] != myId ||
+        data['calleeId'] != uid ||
         data['status'] != 'ringing') {
       return null;
     }
@@ -84,14 +93,20 @@ class CallSignalingService {
 
   Future<RTCSessionDescription> readOffer(String callId) async {
     final document = await _calls.doc(callId).get();
+
     final raw = document.data()?['offer'];
-    if (raw is! Map<String, dynamic>) {
+    if (raw is! Map) {
       throw StateError('This call has no WebRTC offer.');
     }
 
-    final sdp = raw['sdp'] as String?;
-    final type = raw['type'] as String?;
-    if (sdp == null || type == null) {
+    final map = Map<String, dynamic>.from(raw);
+    final sdp = map['sdp'] as String?;
+    final type = map['type'] as String?;
+
+    if (sdp == null ||
+        sdp.trim().isEmpty ||
+        type == null ||
+        type.trim().isEmpty) {
       throw StateError('The WebRTC offer is incomplete.');
     }
 
@@ -102,6 +117,8 @@ class CallSignalingService {
     required String callId,
     required RTCSessionDescription answer,
   }) async {
+    if (callId.isEmpty) return;
+
     await _calls.doc(callId).update({
       'status': 'accepted',
       'answer': {'type': answer.type, 'sdp': answer.sdp},
@@ -110,6 +127,8 @@ class CallSignalingService {
   }
 
   Future<void> rejectCall(String callId) async {
+    if (callId.isEmpty) return;
+
     await _calls.doc(callId).update({
       'status': 'rejected',
       'endedAt': FieldValue.serverTimestamp(),
@@ -120,42 +139,70 @@ class CallSignalingService {
     required String callId,
     required RTCIceCandidate candidate,
   }) async {
-    await _calls.doc(callId).collection('callerCandidates').add({
-      'candidate': candidate.candidate,
-      'sdpMid': candidate.sdpMid,
-      'sdpMLineIndex': candidate.sdpMLineIndex,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+    if (callId.isEmpty ||
+        candidate.candidate == null ||
+        candidate.candidate!.isEmpty) {
+      return;
+    }
+
+    await _calls
+        .doc(callId)
+        .collection('callerCandidates')
+        .add(_candidateData(candidate));
   }
 
   Future<void> addCalleeCandidate({
     required String callId,
     required RTCIceCandidate candidate,
   }) async {
-    await _calls.doc(callId).collection('calleeCandidates').add({
+    if (callId.isEmpty ||
+        candidate.candidate == null ||
+        candidate.candidate!.isEmpty) {
+      return;
+    }
+
+    await _calls
+        .doc(callId)
+        .collection('calleeCandidates')
+        .add(_candidateData(candidate));
+  }
+
+  Map<String, dynamic> _candidateData(RTCIceCandidate candidate) {
+    return {
       'candidate': candidate.candidate,
       'sdpMid': candidate.sdpMid,
       'sdpMLineIndex': candidate.sdpMLineIndex,
       'createdAt': FieldValue.serverTimestamp(),
-    });
+    };
   }
 
   Stream<CallSession> watchSession(String callId) {
+    if (callId.isEmpty) return const Stream.empty();
+
     return _calls
         .doc(callId)
         .snapshots()
-        .where((doc) => doc.exists)
+        .where((document) => document.exists)
         .map(CallSession.fromDoc);
   }
 
   Stream<RTCSessionDescription?> watchAnswer(String callId) {
+    if (callId.isEmpty) return const Stream.empty();
+
     return _calls.doc(callId).snapshots().map((document) {
       final raw = document.data()?['answer'];
-      if (raw is! Map<String, dynamic>) return null;
+      if (raw is! Map) return null;
 
-      final sdp = raw['sdp'] as String?;
-      final type = raw['type'] as String?;
-      if (sdp == null || type == null) return null;
+      final map = Map<String, dynamic>.from(raw);
+      final sdp = map['sdp'] as String?;
+      final type = map['type'] as String?;
+
+      if (sdp == null ||
+          sdp.trim().isEmpty ||
+          type == null ||
+          type.trim().isEmpty) {
+        return null;
+      }
 
       return RTCSessionDescription(sdp, type);
     });
@@ -170,28 +217,42 @@ class CallSignalingService {
   }
 
   Stream<RTCIceCandidate> _candidateStream(String callId, String collection) {
+    if (callId.isEmpty) return const Stream.empty();
+
     return _calls
         .doc(callId)
         .collection(collection)
+        .orderBy('createdAt')
         .snapshots()
         .expand(
           (snapshot) => snapshot.docChanges
               .where((change) => change.type == DocumentChangeType.added)
               .map((change) {
                 final data = change.doc.data() ?? const <String, dynamic>{};
+
+                final value = data['candidate'] as String?;
+                if (value == null || value.isEmpty) {
+                  return null;
+                }
+
                 return RTCIceCandidate(
-                  data['candidate'] as String?,
+                  value,
                   data['sdpMid'] as String?,
                   (data['sdpMLineIndex'] as num?)?.toInt(),
                 );
-              }),
+              })
+              .whereType<RTCIceCandidate>(),
         );
   }
 
   Future<void> endCall(String callId) async {
     if (callId.isEmpty) return;
 
-    await _calls.doc(callId).update({
+    final reference = _calls.doc(callId);
+    final snapshot = await reference.get();
+    if (!snapshot.exists) return;
+
+    await reference.update({
       'status': 'ended',
       'endedAt': FieldValue.serverTimestamp(),
     });
@@ -200,7 +261,11 @@ class CallSignalingService {
   Future<void> markFailed(String callId) async {
     if (callId.isEmpty) return;
 
-    await _calls.doc(callId).update({
+    final reference = _calls.doc(callId);
+    final snapshot = await reference.get();
+    if (!snapshot.exists) return;
+
+    await reference.update({
       'status': 'failed',
       'endedAt': FieldValue.serverTimestamp(),
     });
